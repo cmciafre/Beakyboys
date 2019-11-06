@@ -1,4 +1,4 @@
-*Mapping North American Beaksedges*
+**Mapping North American Beaksedges**
 
 **Repository Description Notes:**
 This repository contains mapping analyses using preliminary data and open source online data.
