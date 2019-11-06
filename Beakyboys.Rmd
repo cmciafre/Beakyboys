@@ -1,0 +1,165 @@
+---
+title: "Mapping Beaksedges for Fun and Profit"
+author: "C. M. Ciafre"
+output:
+  html_document:
+    df_print: paged
+  html_notebook:
+    df_print: paged
+    highlight: zenburn
+    number_sections: no
+    rows.print: 10
+    theme: journal
+---
+```{r setup, NOTICE USE of PACMAN, include=FALSE}
+#install pacman first to automatically install and load any needed packages
+pacman::p_load(ggplot2, dplyr, tidyr, reshape, dismo, rgbif, rdryad, utils, readxl, ggridges, viridis, rasterVis, wesanderson)
+
+newby<-read.csv("Data/RhynchCoords.csv", header=TRUE)
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+extent <- extent(-130,-70,20,60)
+
+RHYGLO <- gbif("rhynchospora", species = "glomerata", ext = extent,
+             geo = TRUE, sp = TRUE, download = TRUE,
+             removeZeros = TRUE)
+RHYCAT <- gbif("rhynchospora", species = "capitellata", ext = extent,
+             geo = TRUE, sp = TRUE, download = TRUE,
+             removeZeros = TRUE)
+RHYCHA <- gbif("rhynchospora", species = "chalarocephala", ext = extent,
+             geo = TRUE, sp = TRUE, download = TRUE,
+             removeZeros = TRUE)
+RHYCAL <- gbif("rhynchospora", species = "capillacea", ext = extent,
+             geo = TRUE, sp = TRUE, download = TRUE,
+             removeZeros = TRUE)
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+RHYGLO.df <- as.data.frame(cbind(RHYGLO@coords[,1],RHYGLO@coords[,2]))
+RHYGLO.df$species <- "RHYGLO"
+
+RHYCAT.df <- as.data.frame(cbind(RHYCAT@coords[,1],RHYCAT@coords[,2]))
+RHYCAT.df$species <- "RHYCAT"
+
+RHYCHA.df <- as.data.frame(cbind(RHYCHA@coords[,1],RHYCHA@coords[,2]))
+RHYCHA.df$species <- "RHYCHA"
+
+RHYCAL.df <- as.data.frame(cbind(RHYCAL@coords[,1],RHYCAL@coords[,2]))
+RHYCAL.df$species <- "RHYCAL"
+
+species<-rbind(RHYGLO.df, RHYCAT.df, RHYCHA.df, RHYCAL.df)
+species$Alpha <- ".3"
+colnames(species) <- c("longitude","latitude","species", "Alpha")
+
+speciesplus<-rbind(species, newby)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+us <- map_data("state")
+ca <- map_data("world")
+
+ggplot(data = speciesplus, aes(x=longitude, y=latitude, color=species)) +
+  geom_polygon(data = ca, aes(x=long, y = lat, group = group),
+               fill = "black", color="black") +
+  geom_polygon(data = us, aes(x=long, y = lat, group = group),
+               fill = "black", color="black") +
+  geom_point(size=2, alpha = speciesplus$Alpha) + 
+  scale_color_manual(name="Species", labels=c("R. sp. nov.", "R. capillacea","R. capitellata","R. chalarocephala", "R. glomerata"), values=c("white", "deeppink1","darkgoldenrod2","darkturquoise", "brown3")) +
+  xlab("Longitude") + 
+  ylab("Latitude") +
+  theme(panel.background = element_rect(fill = "blue4",
+                                colour = "blue4",
+                                size = 0.5, linetype = "solid"),
+          panel.grid.major = element_line(size = 0.5, linetype = 'solid',
+                                colour = "blue"), 
+  panel.grid.minor = element_line(size = 0.25, linetype = 'solid',
+                                colour = "blue")) +
+  ggtitle("The distribution of several species of Rhynchospora in North America") +
+  coord_fixed(xlim = c(-125,-65), ylim = c(20,60))
+  
+  # coord_fixed(xlim = c(-95,-67.5), ylim = c(25,50)) 
+```
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+colnames(RHYCHA.df) <- c("longitude","latitude","species")
+RHYCHA.coord <- RHYCHA.df[c(1:2)]
+colnames(RHYCAL.df) <- c("longitude","latitude","species")
+RHYCAL.coord <- RHYCAL.df[c(1:2)]
+newby.coord <- newby[c(1:2)]
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+bioclim <- getData(name = "worldclim", res = 2.5, var = "bio")
+
+names(bioclim) <- c("Ann Mean Temp","Mean Diurnal Range","Isothermality","Temperature Seasonality",
+                           "Max Temp Warmest Mo","Min Temp Coldest Mo","Ann Temp Range","Mean Temp Wettest Qtr",
+                           "Mean Temp Driest Qtr","Mean Temp Warmest Qtr","Mean Temp Coldest Qtr","Annual Precip",
+                           "Precip Wettest Mo","Precip Driest Mo","Precip Seasonality","Precip Wettest Qtr",
+                           "Precip Driest Qtr","Precip Warmest Qtr","Precip Coldest Qtr")
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+bio_extent <- extent(x = c(
+  min(-100),
+  max(-70),
+  min(25),
+  max(45)))
+
+bioclim_extent <- crop(x = bioclim, y = bio_extent)
+bioclim_model <- bioclim(x = bioclim_extent, p = RHYCHA.coord)
+presence_model <- dismo::predict(object = bioclim_model, 
+                                 x = bioclim_extent, 
+                                 ext = bio_extent)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+pal <- wes_palette("Zissou1", 21, type = "continuous")
+
+gplot(presence_model) + 
+  geom_raster(aes(fill=value)) +
+  geom_polygon(data = us, aes(x= long, y = lat, group = group),
+               fill = NA, color="black") +
+  geom_point(data = RHYCHA.coord, aes(x = longitude, y = latitude), color = "black", alpha = .4, size=2) +
+  scale_fill_gradientn(colours=pal, "Probability") +
+  coord_fixed(xlim = c(-96,-74), ylim = c(28,43)) +
+  xlab("Longitude") + 
+  ylab("Latitude") + 
+  labs(title = "Occurrence Probability of R. chalarocephala",
+              caption = "Data sources: worldclim.org, GBIF.org") +
+  theme_bw() + theme(plot.title = element_text(hjust = 0.5)) + theme(legend.position = "right") +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank())
+```
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+bio_extent2 <- extent(x = c(
+  min(-100),
+  max(-70),
+  min(25),
+  max(45)))
+
+bioclim_extent2 <- crop(x = bioclim, y = bio_extent2)
+bioclim_model2 <- bioclim(x = bioclim_extent2, p = newby.coord)
+presence_model2 <- dismo::predict(object = bioclim_model2, 
+                                 x = bioclim_extent2, 
+                                 ext = bio_extent2)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+gplot(presence_model2) + 
+  geom_raster(aes(fill=value)) +
+  geom_polygon(data = us, aes(x= long, y = lat, group = group),
+               fill = NA, color="black") +
+  geom_point(data = newby.coord, aes(x = longitude, y = latitude), color = "black", alpha = .5, size=2) +
+  scale_fill_gradientn(colours=pal, "Probability") +
+  coord_fixed(xlim = c(-96,-74), ylim = c(28,43)) +
+  xlab("Longitude") + 
+  ylab("Latitude") + 
+  labs(title = "Occurrence Probability of a New Species of Rhynchospora",
+              caption = "Data source: worldclim.org") +
+  theme_bw() + theme(plot.title = element_text(hjust = 0.5)) + theme(legend.position = "right") +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank())
+```
